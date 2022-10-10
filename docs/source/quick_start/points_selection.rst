@@ -10,7 +10,7 @@ by:
 
 .. code:: python
 
-    video = pyidi.pyIDI(cih_file)
+    video = pyidi.pyIDI(data)
 
 A ``ROISelect`` object can then be created:
 

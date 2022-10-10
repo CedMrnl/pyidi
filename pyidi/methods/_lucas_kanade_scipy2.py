@@ -35,8 +35,7 @@ class LucasKanadeSc2(IDIMethod):
     def configure(
         self, roi_size=(9, 9), pad=2, max_nfev=20, 
         tol=1e-8, int_order=3, verbose=1, show_pbar=True, 
-        processes=1, pbar_type='atpbar', multi_type='mantichora',
-        resume_analysis=True, process_number=0, reference_image=0
+        processes=1, resume_analysis=True, process_number=0, reference_image=0
     ):
         """
         Displacement identification based on Lucas-Kanade method,
@@ -64,10 +63,6 @@ class LucasKanadeSc2(IDIMethod):
         :type show_pbar: bool, optional
         :param processes: number of processes to run
         :type processes: int, optional, defaults to 1.
-        :param pbar_type: type of the progress bar ('tqdm' or 'atpbar'), defaults to 'atpbar'
-        :type pbar_type: str, optional
-        :param multi_type: type of multiprocessing used ('multiprocessing' or 'mantichora'), defaults to 'mantichora'
-        :type multi_type: str, optional
         :param resume_analysis: if True, the last analysis results are loaded and computation continues from last computed time point.
         :type resum_analysis: bool, optional
         :param process_number: User should not change this (for multiprocessing purposes - to indicate the process number)
@@ -91,10 +86,6 @@ class LucasKanadeSc2(IDIMethod):
             self.roi_size = roi_size
         if int_order is not None:
             self.int_order = int_order
-        if pbar_type is not None:
-            self.pbar_type = pbar_type
-        if multi_type is not None:
-            self.multi_type = multi_type
         if processes is not None:
             self.processes = processes
         if resume_analysis is not None:
@@ -105,7 +96,10 @@ class LucasKanadeSc2(IDIMethod):
             self.reference_image = reference_image
         
         self.start_time = 1
-        self.temp_dir = os.path.join(os.path.split(self.video.cih_file)[0], 'temp_file')
+        if isinstance(self.video.data, str):
+            self.temp_dir = os.path.join(os.path.split(self.video.data)[0], 'temp_file')
+        else:
+            self.temp_dir = "./tmp"
         self.settings_filename = os.path.join(self.temp_dir, 'settings.pkl')
         self.analysis_run = 0
         
@@ -301,13 +295,7 @@ class LucasKanadeSc2(IDIMethod):
         Set progress bar range or normal range.
         """
         if self.show_pbar:
-            if self.pbar_type == 'tqdm':
-                return tqdm(range(*args, **kwargs), ncols=100, leave=True)
-            elif self.pbar_type == 'atpbar':
-                try:
-                    return atpbar(range(*args, **kwargs), name=f'{self.video.points.shape[0]} points', time_track=True)
-                except:
-                    return atpbar(range(*args, **kwargs), name=f'{self.video.points.shape[0]} points')
+            return tqdm(range(*args, **kwargs), ncols=100, leave=True)
         else:
             return range(*args, **kwargs)
 
@@ -437,7 +425,7 @@ class LucasKanadeSc2(IDIMethod):
 
             with open(self.process_log, 'w', encoding='utf-8') as f:
                 f.writelines([
-                    f'cih_file: {self.video.cih_file}\n',
+                    f'data: {self.video.data}\n',
                     f'token: {token}\n',
                     f'points_filename: {self.points_filename}\n',
                     f'disp_filename: {self.disp_filename}\n',
@@ -607,7 +595,7 @@ def multi(video, processes):
     points_split = tools.split_points(points, processes=processes)
     
     idi_kwargs = {
-        'cih_file': video.cih_file,
+        'data': video.data,
     }
     
     method_kwargs = {
@@ -618,45 +606,23 @@ def multi(video, processes):
         'verbose': video.method.verbose, 
         'show_pbar': video.method.show_pbar,
         'int_order': video.method.int_order,
-        'pbar_type': video.method.pbar_type,
         'resume_analysis': video.method.resume_analysis,
         'reference_image': video.method.reference_image
     }
-    if video.method.pbar_type == 'atpbar':
-        print(f'Computation start: {datetime.datetime.now()}')
     t_start = time.time()
 
-    if video.method.multi_type == 'multiprocessing':
-        if method_kwargs['pbar_type'] == 'atpbar':
-            method_kwargs['pbar_type'] = 'tqdm'
-            print(f'!!! WARNING: "atpbar" pbar_type was used with "multiprocessing". This is not supported. Changed pbar_type to "tqdm"')
+    pool = Pool(processes=processes)
+    results = [pool.apply_async(worker, args=(p, idi_kwargs, method_kwargs)) for p in points_split]
+    pool.close()
+    pool.join()
 
-        pool = Pool(processes=processes)
-        results = [pool.apply_async(worker, args=(p, idi_kwargs, method_kwargs)) for p in points_split]
-        pool.close()
-        pool.join()
+    out = []
+    for r in results:
+        out.append(r.get())
 
-        out = []
-        for r in results:
-            out.append(r.get())
-
-        out1 = sorted(out, key=lambda x: x[1])
-        out1 = np.concatenate([d[0] for d in out1])
+    out1 = sorted(out, key=lambda x: x[1])
+    out1 = np.concatenate([d[0] for d in out1])
     
-    elif video.method.multi_type == 'mantichora':
-        with mantichora.mantichora(nworkers=processes) as mcore:
-            for i, p in enumerate(points_split):
-                mcore.run(worker, p, idi_kwargs, method_kwargs, i)
-            returns = mcore.returns()
-        
-        out = []
-        for r in returns:
-            out.append(r)
-        
-        out1 = sorted(out, key=lambda x: x[1])
-        out1 = np.concatenate([d[0] for d in out1])
-
-
     t = time.time() - t_start
     minutes = t//60
     seconds = t%60

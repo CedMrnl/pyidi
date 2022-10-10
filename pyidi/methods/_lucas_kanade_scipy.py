@@ -242,7 +242,7 @@ def multi(video, processes):
     points_split = tools.split_points(points, processes=processes)
     
     idi_kwargs = {
-        'cih_file': video.cih_file,
+        'data': video.data,
     }
     
     method_kwargs = {

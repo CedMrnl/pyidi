@@ -37,7 +37,7 @@ class LucasKanade(IDIMethod):
     def configure(
         self, roi_size=(9, 9), pad=2, max_nfev=20, 
         tol=1e-8, int_order=3, verbose=1, show_pbar=True, 
-        processes=1, pbar_type='atpbar', multi_type='mantichora',
+        processes=1,
         resume_analysis=True, process_number=0, reference_image=0,
         mraw_range='full', use_numba=False
     ):
@@ -67,8 +67,6 @@ class LucasKanade(IDIMethod):
         :type show_pbar: bool, optional
         :param processes: number of processes to run
         :type processes: int, optional, defaults to 1.
-        :param pbar_type: type of the progress bar ('tqdm' or 'atpbar'), defaults to 'atpbar'
-        :type pbar_type: str, optional
         :param multi_type: type of multiprocessing used ('multiprocessing' or 'mantichora'), defaults to 'mantichora'
         :type multi_type: str, optional
         :param resume_analysis: if True, the last analysis results are loaded and computation continues from last computed time point.
@@ -99,8 +97,6 @@ class LucasKanade(IDIMethod):
             self.roi_size = roi_size
         if int_order is not None:
             self.int_order = int_order
-        if pbar_type is not None:
-            self.pbar_type = pbar_type
         if multi_type is not None:
             self.multi_type = multi_type
         if processes is not None:
@@ -117,8 +113,10 @@ class LucasKanade(IDIMethod):
             self.use_numba = use_numba
         
         self._set_mraw_range()
-
-        self.temp_dir = os.path.join(os.path.split(self.video.cih_file)[0], 'temp_file')
+        if isinstance(self.video.data, str):
+            self.temp_dir = os.path.join(os.path.split(self.video.data)[0], 'temp_file')
+        else:
+            self.temp_dir = "./tmp"
         self.settings_filename = os.path.join(self.temp_dir, 'settings.pkl')
         self.analysis_run = 0
         
@@ -339,13 +337,7 @@ class LucasKanade(IDIMethod):
         Set progress bar range or normal range.
         """
         if self.show_pbar:
-            if self.pbar_type == 'tqdm':
-                return tqdm(range(*args, **kwargs), ncols=100, leave=True)
-            elif self.pbar_type == 'atpbar':
-                try:
-                    return atpbar(range(*args, **kwargs), name=f'{self.video.points.shape[0]} points', time_track=True)
-                except:
-                    return atpbar(range(*args, **kwargs), name=f'{self.video.points.shape[0]} points')
+            return tqdm(range(*args, **kwargs), ncols=100, leave=True)
         else:
             return range(*args, **kwargs)
 
@@ -474,7 +466,7 @@ class LucasKanade(IDIMethod):
 
             with open(self.process_log, 'w', encoding='utf-8') as f:
                 f.writelines([
-                    f'cih_file: {self.video.cih_file}\n',
+                    f'data: {self.video.data}\n',
                     f'token: {token}\n',
                     f'points_filename: {self.points_filename}\n',
                     f'disp_filename: {self.disp_filename}\n',
@@ -587,7 +579,6 @@ class LucasKanade(IDIMethod):
             'int_order',
             'show_pbar',
             'processes',
-            'pbar_type',
             'multi_type',
             'reference_image',
             'mraw_range',
@@ -654,7 +645,7 @@ def multi(video, processes):
     points_split = tools.split_points(points, processes=processes)
     
     idi_kwargs = {
-        'cih_file': video.cih_file,
+        'data': video.data,
     }
     
     method_kwargs = {
@@ -733,8 +724,14 @@ def compute_inverse_numba(Gx, Gy):
     Gx2 = np.sum(Gx**2)
     Gy2 = np.sum(Gy**2)
     GxGy = np.sum(Gx * Gy)
-
-    A_inv = 1/(GxGy**2 - Gx2*Gy2) * np.array([[GxGy, -Gx2], [-Gy2, GxGy]])
+    if Gx2 == 0 and Gy2 !=0 :
+        A_inv = np.array([[0, 0 ],[0, 1/Gy2]])
+    elif Gx2 != 0 and Gy2 ==0 : 
+        A_inv = np.array([[1/Gx2, 0 ],[0, 0]])
+    elif Gx2 == 0 and Gy2 ==0 :
+        A_inv = np.array([[0, 0 ],[0, 0]])
+    else:
+        A_inv = 1/(GxGy**2 - Gx2*Gy2) * np.array([[GxGy, -Gx2], [-Gy2, GxGy]])
 
     return A_inv
 

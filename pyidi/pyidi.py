@@ -27,10 +27,10 @@ class pyIDI:
     """
     The pyIDI base class represents the video to be analysed.
     """
-    def __init__(self, cih_file):
-        self.cih_file = cih_file
-        if isinstance(cih_file, str) :
-            self.root = os.path.split(self.cih_file)[0]
+    def __init__(self, data):
+        self.data = data
+        if isinstance(data, str) :
+            self.root = os.path.split(self.data)[0]
         else:
             self.root = ''
 
@@ -49,22 +49,22 @@ class pyIDI:
             ])
         tools.update_docstring(self.set_method, added_doc=available_methods_doc)
 
-        if isinstance(cih_file, str):
+        if isinstance(data, str):
             # Load selected video
-            self.mraw, self.info = pyMRAW.load_video(self.cih_file)
+            self.mraw, self.info = pyMRAW.load_video(self.data)
             self.N = self.info['Total Frame']
             self.image_width = self.info['Image Width']
             self.image_height = self.info['Image Height']
         
-        elif isinstance(cih_file, np.ndarray):
-            self.mraw = cih_file
-            self.N = cih_file.shape[0]
-            self.image_height = cih_file.shape[1]
-            self.image_width = cih_file.shape[2]
+        elif isinstance(data, np.ndarray):
+            self.mraw = data
+            self.N = data.shape[0]
+            self.image_height = data.shape[1]
+            self.image_width = data.shape[2]
             self.info = {}
         
         else:
-            raise ValueError('`cih_file` must be either a cih filename or a 3D array (N_time, height, width)')
+            raise ValueError('`data` must be either a cih filename or a 3D array (N_time, height, width)')
 
 
     def set_method(self, method, **kwargs):
@@ -201,8 +201,11 @@ class pyIDI:
     
 
     def create_analysis_directory(self):
-        cih_file_ = os.path.split(self.cih_file)[-1].split('.')[0]
-        self.root_analysis = os.path.join(self.root, f'{cih_file_}_pyidi_analysis')
+        if isinstance(self.data, str):
+            data_ = os.path.split(self.data)[-1].split('.')[0]
+        else:
+            data_ = "tmp"
+        self.root_analysis = os.path.join(self.root, f'{data_}_pyidi_analysis')
         if not os.path.exists(self.root_analysis):
             os.mkdir(self.root_analysis)
         
@@ -225,7 +228,7 @@ class pyIDI:
         out = {
             'info': self.info,
             'createdate': datetime.datetime.now().strftime("%Y %m %d    %H:%M:%S"),
-            'cih_file': self.cih_file,
+            'data': self.data if isinstance(self.data, str) else "tmp",
             'settings': self.method.create_settings_dict(),
             'method': self.method_name
         }
@@ -236,7 +239,7 @@ class pyIDI:
     
     def __repr__(self):
         
-        rep = 'File name: ' + self.cih_file + ',\n' + \
+        rep = 'File name: ' + self.data + ',\n' + \
         'Image width: ' + str(self.image_width) + ',\n' + \
         'Image height: ' + str(self.image_height) + ',\n' + \
         'Total frame: ' + str(self.N) + ',\n' + \
