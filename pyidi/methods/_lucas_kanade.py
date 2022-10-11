@@ -67,8 +67,6 @@ class LucasKanade(IDIMethod):
         :type show_pbar: bool, optional
         :param processes: number of processes to run
         :type processes: int, optional, defaults to 1.
-        :param multi_type: type of multiprocessing used ('multiprocessing' or 'mantichora'), defaults to 'mantichora'
-        :type multi_type: str, optional
         :param resume_analysis: if True, the last analysis results are loaded and computation continues from last computed time point.
         :type resum_analysis: bool, optional
         :param process_number: User should not change this (for multiprocessing purposes - to indicate the process number)
@@ -97,8 +95,6 @@ class LucasKanade(IDIMethod):
             self.roi_size = roi_size
         if int_order is not None:
             self.int_order = int_order
-        if multi_type is not None:
-            self.multi_type = multi_type
         if processes is not None:
             self.processes = processes
         if resume_analysis is not None:
@@ -579,7 +575,6 @@ class LucasKanade(IDIMethod):
             'int_order',
             'show_pbar',
             'processes',
-            'multi_type',
             'reference_image',
             'mraw_range',
         ]
@@ -661,41 +656,22 @@ def multi(video, processes):
         'reference_image': video.method.reference_image,
         'mraw_range': video.method.mraw_range,
     }
-    if video.method.pbar_type == 'atpbar':
-        print(f'Computation start: {datetime.datetime.now()}')
     t_start = time.time()
 
-    if video.method.multi_type == 'multiprocessing':
-        if method_kwargs['pbar_type'] == 'atpbar':
-            method_kwargs['pbar_type'] = 'tqdm'
-            warnings.warn('"atpbar" pbar_type was used with "multiprocessing". This is not supported. Changed pbar_type to "tqdm"')
+    method_kwargs['pbar_type'] = 'tqdm'
 
-        pool = Pool(processes=processes)
-        results = [pool.apply_async(worker, args=(p, idi_kwargs, method_kwargs, i)) for i, p in enumerate(points_split)]
-        pool.close()
-        pool.join()
+    pool = Pool(processes=processes)
+    results = [pool.apply_async(worker, args=(p, idi_kwargs, method_kwargs, i)) for i, p in enumerate(points_split)]
+    pool.close()
+    pool.join()
 
-        out = []
-        for r in results:
-            out.append(r.get())
+    out = []
+    for r in results:
+        out.append(r.get())
 
-        out1 = sorted(out, key=lambda x: x[1])
-        out1 = np.concatenate([d[0] for d in out1])
+    out1 = sorted(out, key=lambda x: x[1])
+    out1 = np.concatenate([d[0] for d in out1])
     
-    elif video.method.multi_type == 'mantichora':
-        with mantichora.mantichora(nworkers=processes) as mcore:
-            for i, p in enumerate(points_split):
-                mcore.run(worker, p, idi_kwargs, method_kwargs, i)
-            returns = mcore.returns()
-        
-        out = []
-        for r in returns:
-            out.append(r)
-        
-        out1 = sorted(out, key=lambda x: x[1])
-        out1 = np.concatenate([d[0] for d in out1])
-
-
     t = time.time() - t_start
     minutes = t//60
     seconds = t%60
